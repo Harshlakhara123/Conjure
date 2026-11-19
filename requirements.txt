@@ -2,3 +2,5 @@ fastapi[standard]
 sqlalchemy[asyncio]
 asyncpg
 alembic
+clerk-backend-api
+python-dotenv

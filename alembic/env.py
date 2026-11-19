@@ -1,3 +1,4 @@
+from app.config import get_setting
 from app.db import Base
 from app.users.model import User
 import asyncio
@@ -13,7 +14,7 @@ from alembic import context
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-database_url = os.environ["DATABASE_URL"]
+database_url = get_setting("DATABASE_URL")
 config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 # Interpret the config file for Python logging.
