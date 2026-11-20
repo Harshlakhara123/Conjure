@@ -1,6 +1,9 @@
 from app.config import get_setting
 from app.db import Base
 from app.users.model import User
+from app.projects.model import Project
+from app.files.model import FileEntry
+
 import asyncio
 from logging.config import fileConfig
 import os

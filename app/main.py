@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_frontend_origins
 from app.db_session import engine, get_db_session
 from app.auth.router import router as auth_router
+from app.projects.router import router as projects_router
 from app.users.router import router as users_router
+from app.files.router import router as files_router
 
 
 @asynccontextmanager
@@ -26,11 +28,13 @@ app = FastAPI(title="Conjure API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_frontend_origins(),
-    allow_methods=["GET","POST"],
+    allow_methods=["GET","POST","PATCH"],
     allow_headers=["Authorization"],
 )
 app.include_router(auth_router)
 app.include_router(users_router)
+app.include_router(projects_router)
+app.include_router(files_router)
 
 @app.get("/health/db")
 async def database_health(
