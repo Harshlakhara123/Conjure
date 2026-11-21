@@ -1,4 +1,4 @@
-from pydantic import BaseModel,StringConstraints,field_validator,model_validator,ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 from typing import Annotated,Literal,Self
 from uuid import UUID
 from datetime import datetime
@@ -27,7 +27,6 @@ class FileEntryCreate(BaseModel):
             raise ValueError("Folders cant have any content")
         return self
 
-
 class FileEntryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id:UUID
@@ -37,3 +36,21 @@ class FileEntryResponse(BaseModel):
     type: Literal["file","folder"]
     content:str | None = None
     updated_at:datetime
+    revision: int
+
+class FileContentUpdate(BaseModel):
+    content: str
+    expected_revision: int = Field(ge=1, strict=True)
+
+class FileEntryRename(BaseModel):
+    name:Annotated[str,StringConstraints(min_length=1,strip_whitespace=True)]
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls,value:str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("Name cannot be blank.")
+        if name in {".", ".."} or "/" in name or "\\" in name:
+            raise ValueError("Name must be single file or folder name")
+        return name

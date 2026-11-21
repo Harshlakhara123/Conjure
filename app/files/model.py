@@ -7,6 +7,7 @@ from sqlalchemy import (
     CheckConstraint,
     ForeignKey,
     ForeignKeyConstraint,
+    Integer,
     Text,
     UniqueConstraint,
     Uuid,
@@ -33,6 +34,7 @@ class FileEntry(Base):
             ["project_id", "parent_id"],
             ["files.project_id", "files.id"],
             name="fk_files_parent_in_project",
+            ondelete="CASCADE",
         ),
     )
 
@@ -50,6 +52,7 @@ class FileEntry(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     type: Mapped[Literal["file", "folder"]] = mapped_column(Text, nullable=False)
     content: Mapped[str | None] = mapped_column(Text)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,

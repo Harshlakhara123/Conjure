@@ -28,7 +28,7 @@ app = FastAPI(title="Conjure API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_frontend_origins(),
-    allow_methods=["GET","POST","PATCH"],
+    allow_methods=["GET","POST","PATCH","DELETE"],
     allow_headers=["Authorization"],
 )
 app.include_router(auth_router)
