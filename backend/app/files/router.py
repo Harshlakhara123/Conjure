@@ -190,7 +190,8 @@ async def update_name(
             if file_with_updated_name is None:
                 raise HTTPException(status_code=404, detail="file not found")
     except IntegrityError as exc:
-        constraint_name = getattr(exc.orig.__cause__,"constraint_name",None)
+        driver_error = getattr(exc.orig, "__cause__", None)
+        constraint_name = getattr(driver_error, "constraint_name", None)
         if constraint_name == "uq_files_sibling_name":
             raise HTTPException(
                 status_code=409,
