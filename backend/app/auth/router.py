@@ -10,7 +10,6 @@ from app.users.schemas import UserResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-
 @router.post("/bootstrap", response_model=UserResponse)
 async def bootstrap_user(
     clerk_user_id: Annotated[str, Depends(require_clerk_user)],
