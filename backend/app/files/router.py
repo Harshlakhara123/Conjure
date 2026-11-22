@@ -12,6 +12,12 @@ from app.files.repository import FileRepository
 from app.files.schemas import FileEntryResponse,FileEntryCreate,FileContentUpdate,FileEntryRename
 router = APIRouter(prefix='/projects/{project_id}/files')
 
+MAX_FILE_CONTENT_BYTES = 1024 * 1024
+def validate_file_content_size(content:str | None) -> None:
+    if content is None:
+        return
+    if len(content.encode("utf-8")) > MAX_FILE_CONTENT_BYTES:
+        raise HTTPException(status_code=413,detail="File content exceeds the 1 MiB limit.")
 @router.post("",response_model=FileEntryResponse,status_code=201)
 async def create_file(
     request:FileEntryCreate,
@@ -19,6 +25,7 @@ async def create_file(
     clerk_user_id: Annotated[str, Depends(require_clerk_user)],
     session:Annotated[AsyncSession, Depends(get_db_session)],
 ) -> FileEntryResponse:
+    validate_file_content_size(request.content)
     async with session.begin():
 
         user = await UserRepository(session).get_by_clerk_id(clerk_user_id)
@@ -130,6 +137,7 @@ async def update_content(
     clerk_user_id: Annotated[str, Depends(require_clerk_user)],
     session:Annotated[AsyncSession,Depends(get_db_session)],
 ) -> FileEntryResponse:
+    validate_file_content_size(request.content)
     async with session.begin():
         user = await UserRepository(session).get_by_clerk_id(clerk_user_id)
         if user is None:
@@ -182,13 +190,24 @@ async def update_name(
             if project is None:
                 raise HTTPException(status_code=404, detail="Project not found")
 
-            file_with_updated_name = await FileRepository(session).rename_for_project(
+            file_repository = FileRepository(session)
+            file_with_updated_name = await file_repository.rename_for_project(
                 entry_id=entry_id,
                 project_id=project_id,
-                new_name=request.name
+                new_name=request.name,
+                expected_revision=request.expected_revision,
             )
             if file_with_updated_name is None:
-                raise HTTPException(status_code=404, detail="file not found")
+                current_entry = await file_repository.get_by_id_for_project(
+                    entry_id=entry_id,
+                    project_id=project_id,
+                )
+                if current_entry is None:
+                    raise HTTPException(status_code=404, detail="file not found")
+                raise HTTPException(
+                    status_code=409,
+                    detail="This entry changed. Reload it before renaming.",
+                )
     except IntegrityError as exc:
         driver_error = getattr(exc.orig, "__cause__", None)
         constraint_name = getattr(driver_error, "constraint_name", None)

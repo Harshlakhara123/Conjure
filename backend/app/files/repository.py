@@ -77,10 +77,10 @@ class FileRepository:
         )
         return result.scalar_one_or_none()
 
-    async def rename_for_project(self,entry_id:UUID,project_id:UUID,new_name:str) -> FileEntry | None:
+    async def rename_for_project(self,entry_id:UUID,project_id:UUID,new_name:str,expected_revision: int) -> FileEntry | None:
         result = await self.session.execute(
             update(FileEntry)
-            .where(FileEntry.id == entry_id , FileEntry.project_id == project_id)
+            .where(FileEntry.id == entry_id , FileEntry.project_id == project_id,FileEntry.revision == expected_revision)
             .values(name=new_name, updated_at=func.now(), revision=FileEntry.revision + 1)
             .returning(FileEntry)
         )

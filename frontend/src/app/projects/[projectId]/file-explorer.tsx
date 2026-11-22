@@ -10,6 +10,7 @@ type FileEntry = {
   id: string;
   name: string;
   type: "file" | "folder";
+  revision: number;
 };
 
 type FileExplorerProps = {
@@ -190,6 +191,7 @@ export function FileExplorer({
                   projectId={projectId}
                   entryId={entry.id}
                   currentName={entry.name}
+                  expectedRevision={entry.revision}
                   onCancel={() => setRenamingEntryId(null)}
                   onRenamed={() => {
                     setRenamingEntryId((id) => (id === entry.id ? null : id));

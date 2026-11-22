@@ -4,3 +4,5 @@ asyncpg
 alembic
 clerk-backend-api
 python-dotenv
+langgraph
+langchain-ollama

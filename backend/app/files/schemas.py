@@ -1,25 +1,26 @@
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator, AfterValidator
 from typing import Annotated,Literal,Self
 from uuid import UUID
 from datetime import datetime
 
+MAX_ENTRY_NAME_BYTES = 255
+def validate_entry_name(name: str) -> str:
+    if name in {".", ".."} or "/" in name or "\\" in name:
+        raise ValueError("Name must be single file or folder name")
+    if len(name.encode("utf-8")) > MAX_ENTRY_NAME_BYTES:
+        raise ValueError("Name must be at most 255 UTF-8 bytes.")
+    return name
 
-
+EntryName = Annotated[
+    str,
+    StringConstraints(min_length=1, strip_whitespace=True),
+    AfterValidator(validate_entry_name),
+]
 class FileEntryCreate(BaseModel):
-    name: Annotated[str,StringConstraints(min_length=1,strip_whitespace=True)]
+    name: EntryName
     type: Literal["file","folder"]
     parent_id: UUID | None = None
     content:str | None = None
-
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls,value:str)->str:
-        name=value.strip()
-        if not name:
-            raise ValueError("Name cannot be blank.")
-        if name in {".", ".."} or "/" in name or "\\" in name:
-            raise ValueError("Name must be single file or folder name")
-        return name
 
     @model_validator(mode='after')
     def validate_folder_content(self) -> Self:
@@ -43,14 +44,5 @@ class FileContentUpdate(BaseModel):
     expected_revision: int = Field(ge=1, strict=True)
 
 class FileEntryRename(BaseModel):
-    name:Annotated[str,StringConstraints(min_length=1,strip_whitespace=True)]
-
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls,value:str) -> str:
-        name = value.strip()
-        if not name:
-            raise ValueError("Name cannot be blank.")
-        if name in {".", ".."} or "/" in name or "\\" in name:
-            raise ValueError("Name must be single file or folder name")
-        return name
+    name:EntryName
+    expected_revision: int = Field(ge=1, strict=True)
