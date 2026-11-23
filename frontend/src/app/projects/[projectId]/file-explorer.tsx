@@ -10,6 +10,7 @@ type FileEntry = {
   id: string;
   name: string;
   type: "file" | "folder";
+  revision: number;
 };
 
 type FileExplorerProps = {
@@ -81,13 +82,21 @@ export function FileExplorer({
         throw new Error("Your session is unavailable. Sign in again.");
       }
 
-      const response = await fetch(
-        `${apiBaseUrl}/projects/${projectId}/files/${entry.id}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
+      const url = new URL(`${apiBaseUrl}/projects/${projectId}/files/${entry.id}`);
+      url.searchParams.set("expected_revision", String(entry.revision));
+
+      const response = await fetch(url, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.status === 409) {
+        setDeleteError(
+          "This entry changed. Review the refreshed list before trying again.",
+        );
+        reloadEntries();
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(`Deleting failed with HTTP ${response.status}.`);
@@ -169,9 +178,10 @@ export function FileExplorer({
         onCreated={reloadEntries}
       />
 
-      {selectedFileId !== null && entries?.some((entry) => entry.type === "folder") && (
-        <p>Close the editor to delete a folder.</p>
-      )}
+      {selectedFileId !== null &&
+        entries?.some((entry) => entry.type === "folder") && (
+          <p>Close the editor to delete a folder.</p>
+        )}
 
       {deleteError && <p role="alert">{deleteError}</p>}
 
@@ -190,6 +200,7 @@ export function FileExplorer({
                   projectId={projectId}
                   entryId={entry.id}
                   currentName={entry.name}
+                  expectedRevision={entry.revision}
                   onCancel={() => setRenamingEntryId(null)}
                   onRenamed={() => {
                     setRenamingEntryId((id) => (id === entry.id ? null : id));

@@ -55,12 +55,13 @@ export function CreateEntryForm({
         }),
       });
 
-      if (response.status === 409) {
-        throw new Error("A file or folder with that name already exists here.");
-      }
-
       if (!response.ok) {
-        throw new Error(`Creating the entry failed with HTTP ${response.status}.`);
+        const body = await response.json().catch(() => null);
+        throw new Error(
+          typeof body?.detail === "string"
+            ? body.detail
+            : `Creating the entry failed with HTTP ${response.status}.`,
+        );
       }
 
       setName("");

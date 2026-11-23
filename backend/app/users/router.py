@@ -1,11 +1,11 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.access import require_application_user
 from app.auth.clerk import require_clerk_user
 from app.db_session import get_db_session
-from app.users.repository import UserRepository
 from app.users.schemas import UserResponse
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -16,9 +16,5 @@ async def get_current_user(
     clerk_user_id: Annotated[str, Depends(require_clerk_user)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> UserResponse:
-    user = await UserRepository(session).get_by_clerk_id(clerk_user_id)
-
-    if user is None:
-        raise HTTPException(status_code=404, detail="Application user not found")
-
+    user = await require_application_user(session, clerk_user_id)
     return UserResponse.model_validate(user)

@@ -7,6 +7,7 @@ type RenameEntryFormProps = {
   projectId: string;
   entryId: string;
   currentName: string;
+  expectedRevision: number;
   onRenamed: () => void;
   onCancel: () => void;
 };
@@ -15,6 +16,7 @@ export function RenameEntryForm({
   projectId,
   entryId,
   currentName,
+  expectedRevision,
   onRenamed,
   onCancel,
 }: RenameEntryFormProps) {
@@ -51,12 +53,20 @@ export function RenameEntryForm({
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name: newName }),
+        body: JSON.stringify({
+          name: newName,
+          expected_revision: expectedRevision,
+        }),
       },
     );
 
     if (response.status === 409) {
-      throw new Error("An entry with that name already exists in this folder.");
+      const body = await response.json().catch(() => null);
+      throw new Error(
+        typeof body?.detail === "string"
+          ? body.detail
+          : "Rename conflict. Reload the folder and try again.",
+      );
     }
 
     if (!response.ok) {

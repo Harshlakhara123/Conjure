@@ -128,12 +128,13 @@ export function FileViewer({ projectId, fileId, onDirtyChange }: FileViewerProps
       },
     );
 
-    if (response.status === 409) {
-      throw new Error("This file changed elsewhere. Your draft is still here.");
-    }
-
     if (!response.ok) {
-      throw new Error(`Saving failed with HTTP ${response.status}.`);
+      const body = await response.json().catch(() => null);
+      const detail =
+        typeof body?.detail === "string"
+          ? body.detail
+          : `Saving failed with HTTP ${response.status}.`;
+      throw new Error(`${detail} Your draft is still here.`);
     }
 
     const savedFile: FileDetails = await response.json();

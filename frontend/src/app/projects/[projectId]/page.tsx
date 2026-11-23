@@ -59,12 +59,26 @@ export default function ProjectPage() {
     return () => controller.abort();
   }, [getToken, isLoaded, isSignedIn, projectId]);
 
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = true;
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  function canDiscardChanges() {
+    return !hasUnsavedChanges || window.confirm("Discard unsaved changes?");
+  }
+
   function selectFile(nextFileId: string | null) {
     if (nextFileId === selectedFileId) return;
 
-    if (hasUnsavedChanges && !window.confirm("Discard unsaved changes?")) {
-      return;
-    }
+    if (!canDiscardChanges()) return;
 
     setHasUnsavedChanges(false);
     setSelectedFileId(nextFileId);
@@ -72,7 +86,13 @@ export default function ProjectPage() {
 
   return (
     <main>
-      <Link href="/" className="underline">
+      <Link
+        href="/"
+        className="underline"
+        onNavigate={(event) => {
+          if (!canDiscardChanges()) event.preventDefault();
+        }}
+      >
         Back to projects
       </Link>
 

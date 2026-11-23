@@ -1,17 +1,26 @@
-from fastapi import APIRouter , Depends , HTTPException , Response
+from fastapi import APIRouter , Depends , HTTPException ,  Query , Response
 from uuid import UUID
 from typing import Annotated
+
+from app.auth.access import require_owned_project
 from app.auth.clerk import require_clerk_user
 from app.db_session import get_db_session
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
-from app.users.repository import UserRepository
-from app.projects.repository import ProjectRepository
+
+from app.files.quotas import require_project_capacity
 from app.files.repository import FileRepository
 
-from app.files.schemas import FileEntryResponse,FileEntryCreate,FileContentUpdate,FileEntryRename
+from app.files.schemas import FileEntryResponse,FileEntryCreate,FileContentUpdate,FileEntryRename,FileEntrySummary
 router = APIRouter(prefix='/projects/{project_id}/files')
 
+MAX_FILE_CONTENT_BYTES = 1024 * 1024
+def validate_file_content_size(content: str | None) -> int:
+    size = len(content.encode("utf-8")) if content is not None else 0
+    if size > MAX_FILE_CONTENT_BYTES:
+        raise HTTPException(status_code=413, detail="File content exceeds the 1 MiB limit.")
+    return size
 @router.post("",response_model=FileEntryResponse,status_code=201)
 async def create_file(
     request:FileEntryCreate,
@@ -19,18 +28,11 @@ async def create_file(
     clerk_user_id: Annotated[str, Depends(require_clerk_user)],
     session:Annotated[AsyncSession, Depends(get_db_session)],
 ) -> FileEntryResponse:
+    validate_file_content_size(request.content)
     async with session.begin():
-
-        user = await UserRepository(session).get_by_clerk_id(clerk_user_id)
-        if user is None:
-            raise HTTPException(status_code=404,detail="application user not found")
-
-        project = await ProjectRepository(session).get_by_id_for_owner(
-            project_id=project_id,
-            owner_id=user.id
+        project = await require_owned_project(
+            session, clerk_user_id, project_id, for_update=True
         )
-        if project is None:
-            raise HTTPException(status_code=404,detail="Project not found")
 
         file_repository = FileRepository(session)
         if request.parent_id is not None:
@@ -57,26 +59,19 @@ async def create_file(
                 status_code=409,
                 detail="A file or folder with that name already exists here",
             )
+        await require_project_capacity(file_repository, project.id, adding_entry=True)
 
     return FileEntryResponse.model_validate(new_file)
 
-@router.get("",response_model=list[FileEntryResponse])
+@router.get("",response_model=list[FileEntrySummary])
 async def list_children(
     project_id:UUID,
     clerk_user_id: Annotated[str, Depends(require_clerk_user)],
     session:Annotated[AsyncSession, Depends(get_db_session)],
     parent_id:UUID | None = None
-) -> list[FileEntryResponse]:
+) -> list[FileEntrySummary]:
     async with session.begin():
-        user = await UserRepository(session).get_by_clerk_id(clerk_user_id)
-        if user is None:
-            raise HTTPException(status_code=404,detail="application user not found")
-        project = await ProjectRepository(session).get_by_id_for_owner(
-            project_id=project_id,
-            owner_id=user.id
-        )
-        if project is None:
-            raise HTTPException(status_code=404,detail="Project not found")
+        await require_owned_project(session, clerk_user_id, project_id)
 
         file_repository = FileRepository(session)
         if parent_id is not None:
@@ -92,7 +87,7 @@ async def list_children(
             project_id=project_id,
             parent_id=parent_id
         )
-        return [FileEntryResponse.model_validate(entry) for entry in children]
+        return [FileEntrySummary.model_validate(entry) for entry in children]
 
 
 @router.get("/{entry_id}",response_model=FileEntryResponse)
@@ -103,15 +98,7 @@ async def get_content_by_file_id(
     session:Annotated[AsyncSession, Depends(get_db_session)],
 ) -> FileEntryResponse:
     async with session.begin():
-        user = await UserRepository(session).get_by_clerk_id(clerk_user_id)
-        if user is None:
-            raise HTTPException(status_code=404,detail="application user not found")
-        project = await ProjectRepository(session).get_by_id_for_owner(
-            project_id=project_id,
-            owner_id=user.id
-        )
-        if project is None:
-            raise HTTPException(status_code=404,detail="Project not found")
+        await require_owned_project(session, clerk_user_id, project_id)
         entry = await FileRepository(session).get_by_id_for_project(
             entry_id=entry_id,
             project_id=project_id
@@ -130,18 +117,14 @@ async def update_content(
     clerk_user_id: Annotated[str, Depends(require_clerk_user)],
     session:Annotated[AsyncSession,Depends(get_db_session)],
 ) -> FileEntryResponse:
+    content_size = validate_file_content_size(request.content)
     async with session.begin():
-        user = await UserRepository(session).get_by_clerk_id(clerk_user_id)
-        if user is None:
-            raise HTTPException(status_code=404, detail="User not found")
-        project = await ProjectRepository(session).get_by_id_for_owner(
-            project_id=project_id,
-            owner_id=user.id
+        project = await require_owned_project(
+            session, clerk_user_id, project_id, for_update=True
         )
-        if project is None:
-            raise HTTPException(status_code=404, detail="Project not found")
 
         file_repository = FileRepository(session)
+        previous_size = await file_repository.get_file_content_size(project.id, entry_id)
         updated_file = await file_repository.update_content_for_project(
             entry_id=entry_id,
             project_id=project.id,
@@ -159,6 +142,8 @@ async def update_content(
                 status_code=409,
                 detail="File has changed. Reload it before saving again.",
             )
+        if content_size > (previous_size or 0):
+            await require_project_capacity(file_repository, project.id)
 
     return FileEntryResponse.model_validate(updated_file)
 
@@ -172,23 +157,28 @@ async def update_name(
 ) -> FileEntryResponse:
     try:
         async with session.begin():
-            user = await UserRepository(session).get_by_clerk_id(clerk_user_id)
-            if user is None:
-                raise HTTPException(status_code=404, detail="User not found")
-            project = await ProjectRepository(session).get_by_id_for_owner(
-                project_id=project_id,
-                owner_id=user.id
+            await require_owned_project(
+                session, clerk_user_id, project_id, for_update=True
             )
-            if project is None:
-                raise HTTPException(status_code=404, detail="Project not found")
 
-            file_with_updated_name = await FileRepository(session).rename_for_project(
+            file_repository = FileRepository(session)
+            file_with_updated_name = await file_repository.rename_for_project(
                 entry_id=entry_id,
                 project_id=project_id,
-                new_name=request.name
+                new_name=request.name,
+                expected_revision=request.expected_revision,
             )
             if file_with_updated_name is None:
-                raise HTTPException(status_code=404, detail="file not found")
+                current_entry = await file_repository.get_by_id_for_project(
+                    entry_id=entry_id,
+                    project_id=project_id,
+                )
+                if current_entry is None:
+                    raise HTTPException(status_code=404, detail="file not found")
+                raise HTTPException(
+                    status_code=409,
+                    detail="This entry changed. Reload it before renaming.",
+                )
     except IntegrityError as exc:
         driver_error = getattr(exc.orig, "__cause__", None)
         constraint_name = getattr(driver_error, "constraint_name", None)
@@ -207,22 +197,28 @@ async def delete_file(
     entry_id:UUID,
     clerk_user_id: Annotated[str, Depends(require_clerk_user)],
     session:Annotated[AsyncSession,Depends(get_db_session)],
+    expected_revision: Annotated[int, Query(ge=1)]
 ):
     async with session.begin():
-        user = await UserRepository(session).get_by_clerk_id(clerk_user_id)
-        if user is None:
-            raise HTTPException(status_code=404, detail="User not found")
-        project = await ProjectRepository(session).get_by_id_for_owner(
-            project_id=project_id,
-            owner_id=user.id
+        await require_owned_project(
+            session, clerk_user_id, project_id, for_update=True
         )
-        if project is None:
-            raise HTTPException(status_code=404, detail="Project not found")
 
-        result = await FileRepository(session).delete_for_project(
+        file_repository = FileRepository(session)
+        deleted = await file_repository.delete_for_project(
             entry_id=entry_id,
-            project_id=project_id
+            project_id=project_id,
+            expected_revision=expected_revision,
         )
-        if not result:
-            raise HTTPException(status_code=404,detail="File entry not found")
+        if not deleted:
+            current_entry = await file_repository.get_by_id_for_project(
+                entry_id=entry_id,
+                project_id=project_id,
+            )
+            if current_entry is None:
+                raise HTTPException(status_code=404, detail="File entry not found")
+            raise HTTPException(
+                status_code=409,
+                detail="This entry changed. Reload it before deleting.",
+            )
     return Response(status_code=204)
