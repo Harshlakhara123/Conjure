@@ -4,12 +4,11 @@ from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 from asyncio import wait_for
 
+from app.auth.access import require_owned_project
 from app.auth.clerk import require_clerk_user
 from app.db_session import get_db_session
 
 from app.ai.schemas import ExplainFileResponse
-from app.users.repository import UserRepository
-from app.projects.repository import ProjectRepository
 from app.ai.file_context import load_file_context
 from app.ai.service import get_explain_graph
 
@@ -25,9 +24,11 @@ async def explain_file(
     session:Annotated[AsyncSession,Depends(get_db_session)]
 ) -> ExplainFileResponse:
     async with session.begin():
+        await require_owned_project(
+            session, clerk_user_id, project_id, not_found_detail="File not found"
+        )
         file_context = await load_file_context(
             session=session,
-            clerk_user_id=clerk_user_id,
             project_id=project_id,
             entry_id=entry_id
         )

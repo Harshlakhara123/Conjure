@@ -14,6 +14,7 @@ from app.projects.router import router as projects_router
 from app.users.router import router as users_router
 from app.files.router import router as files_router
 from app.ai.router import router as ai_router
+from app.request_limits import RequestBodyLimitMiddleware
 
 
 @asynccontextmanager
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="Conjure API", lifespan=lifespan)
 
+app.add_middleware(RequestBodyLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_frontend_origins(),

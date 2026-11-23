@@ -1,4 +1,4 @@
-import os
+import logging
 from typing import Annotated
 
 from clerk_backend_api.security import authenticate_request
@@ -8,6 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import get_frontend_origins, get_setting
 
+logger = logging.getLogger(__name__)
 bearer_scheme = HTTPBearer(auto_error=False)
 
 clerk_options = AuthenticateRequestOptions(
@@ -33,7 +34,7 @@ def require_clerk_user(
 
     auth_state = authenticate_request(request, clerk_options)
     if auth_state.reason is not None:
-        print("Clerk verification failed:", auth_state.reason.name, flush=True)
+        logger.info("Clerk verification failed: %s", auth_state.reason.name)
     payload = auth_state.payload or {}
     clerk_user_id = payload.get("sub")
 

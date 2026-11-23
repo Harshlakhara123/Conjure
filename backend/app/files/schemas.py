@@ -28,16 +28,18 @@ class FileEntryCreate(BaseModel):
             raise ValueError("Folders cant have any content")
         return self
 
-class FileEntryResponse(BaseModel):
+class FileEntrySummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id:UUID
     project_id:UUID
     parent_id:UUID | None = None
     name:str
     type: Literal["file","folder"]
-    content:str | None = None
     updated_at:datetime
     revision: int
+
+class FileEntryResponse(FileEntrySummary):
+    content:str | None = None
 
 class FileContentUpdate(BaseModel):
     content: str
